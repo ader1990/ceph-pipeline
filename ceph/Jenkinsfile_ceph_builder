@@ -45,8 +45,9 @@ def buildCeph() {
             set -xe
             git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph
             cd ceph
-            BUILD_ZIP=1 STRIP_ZIPPED=1 SKIP_TESTS=1 SKIP_BINDIR_CLEAN=1 CMAKE_BUILD_TYPE=Release ./win32_build.sh
+            SKIP_TESTS=1 SKIP_BINDIR_CLEAN=1 CMAKE_BUILD_TYPE=Release ./win32_build.sh
         '''
+        stash includes: 'bin_stripped/**', name: 'ceph-binaries'
     }
 }
 
@@ -80,11 +81,25 @@ def buildWnbd() {
         println "Building ceph winbd"
         cleanWs()
         bat '''
-            git clone "%WNBD_GIT_REMOTE%" --depth 1 --branch "%WNBD_GIT_BRANCH%" wnbd || exit 1
+            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd || exit 1
+            mkdir "Driver"
+            mkdir "Binaries"
+            mkdir "Symbols"
             cd wnbd || exit 1
             call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
             msbuild.exe vstudio/wnbd.sln /p:Configuration=Release || exit 1
+            copy vstudio\\x64\\Release\\driver\\* ..\\Driver\\
+            copy vstudio\\x64\\Release\\libwnbd.dll ..\\Binaries\\
+            copy vstudio\\x64\\Release\\wnbd-client.exe ..\\Binaries\\
+            copy vstudio\\wnbdevents.xml ..\\Binaries\\
+            copy vstudio\\x64\\Release\\pdb\\driver\\* ..\\Symbols\\
+            copy vstudio\\x64\\Release\\pdb\\libwnbd\\* ..\\Symbols\\
+            copy vstudio\\x64\\Release\\pdb\\wnbd-client\\* ..\\Symbols\\
+           
         '''
+        stash includes: 'Driver/**', name: 'wnbd-driver'
+        stash includes: 'Binaries/**', name: 'wnbd-binaries'
+        stash includes: 'Symbols/**', name: 'wnbd-symbols'
     }
 }
 
@@ -93,7 +108,7 @@ def buildCephInstaller() {
         println "Building ceph installer"
         cleanWs()
         bat '''
-            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --depth 1 --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || exit 1
+            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || exit 1
             cd installer || exit 1
             call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
             mkdir "Binaries"
@@ -105,8 +120,9 @@ def buildCephInstaller() {
             echo "" > "Driver\\wnbd.cat"
             msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release || exit 1
         '''
+        stash includes: 'installer/bin/Release/Ceph.msi', name: 'Ceph.msi'
     }
 }
 
-
+buildWnbd()
 buildCephInstaller()
