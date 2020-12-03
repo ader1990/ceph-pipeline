@@ -107,20 +107,29 @@ def buildCephInstaller() {
     node("windows_ceph_builder") {
         println "Building ceph installer"
         cleanWs()
+
+        unstash 'wnbd-driver'
+        unstash 'wnbd-binaries'
+        unstash 'wnbd-symbols'
+
+        bat '''
+            dir Binaries
+            dir Driver
+            dir Symbols
+        '''
+
         bat '''
             git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || exit 1
             cd installer || exit 1
+            move "..\\Binaries" .
+            move "..\\Driver" .
+            move "..\\Symbols" .
             call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
-            mkdir "Binaries"
             echo "" > "Binaries\\rbd-wnbd.exe"
-            mkdir "Symbols"
-            mkdir "Driver"
-            echo "" > "Driver\\wnbd.inf"
-            echo "" > "Driver\\wnbd.sys"
-            echo "" > "Driver\\wnbd.cat"
             msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release || exit 1
         '''
         stash includes: 'installer/bin/Release/Ceph.msi', name: 'Ceph.msi'
+        archiveArtifacts 'installer/bin/Release/Ceph.msi'
     }
 }
 
