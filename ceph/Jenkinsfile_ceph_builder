@@ -22,6 +22,14 @@ properties ([
             name: 'WNBD_GIT_BRANCH',
             defaultValue: 'enforce_tls_1.2',
             description: 'WNBD branch to be built.'],
+        [$class: 'StringParameterDefinition',
+            name: 'CEPH_INSTALLER_GIT_REMOTE',
+            defaultValue: 'https://github.com/cloudbase/ceph-windows-installer',
+            description: 'Ceph installer git remote.'],
+        [$class: 'StringParameterDefinition',
+            name: 'CEPH_INSTALLER_GIT_BRANCH',
+            defaultValue: 'master',
+            description: 'Ceph installer branch to be built.'],
         ]
     ]
 ])
@@ -47,8 +55,8 @@ def installWnbdDeps() {
         bat '''
             if exist C:\\BuildTools\\MSBuild\\nul (echo "Build tools area already installed." && exit 0)
             mkdir C:\\TEMP
-            "C:/Program Files/git/mingw64/bin/curl.exe" "https://aka.ms/vs/16/release/vs_buildtools.exe" -o "vs_buildtools.exe" || exit 1
-            "C:/Program Files/git/mingw64/bin/curl.exe" "https://go.microsoft.com/fwlink/?linkid=2085767" -o "wdksetup.exe" || exit 1
+            "C:/Program Files/git/mingw64/bin/curl.exe" -L -s "https://aka.ms/vs/16/release/vs_buildtools.exe" -o "vs_buildtools.exe" || exit 1
+            "C:/Program Files/git/mingw64/bin/curl.exe" -L -s "https://go.microsoft.com/fwlink/?linkid=2085767" -o "wdksetup.exe" || exit 1
             vs_buildtools.exe --wait --quiet --norestart --nocache --installPath C:\\BuildTools --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Workload.MSBuildTools --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK.18362 --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64 --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64.Spectre || exit 1
             wdksetup.exe /q || exit 1
             copy "C:/Program Files (x86)/Windows Kits/10/Vsix/VS2019/WDK.vsix" C:/TEMP/wdkvsix.zip || exit 1
@@ -67,6 +75,19 @@ def buildWnbd() {
             cd wnbd
             call "c:/BuildTools/VC/Auxiliary/Build/vcvarsall.bat" x86_x64 10.0.18362.0 & set
             msbuild.exe vstudio/wnbd.sln /p:Configuration=Release
+        '''
+    }
+}
+
+def buildCephInstaller() {
+    node("windows_ceph_builder") {
+        println "Building ceph installer"
+        cleanWs()
+        bat '''
+            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer
+            cd installer
+            call "c:/BuildTools/VC/Auxiliary/Build/vcvarsall.bat" x86_x64 10.0.18362.0 & set
+            msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release
         '''
     }
 }
