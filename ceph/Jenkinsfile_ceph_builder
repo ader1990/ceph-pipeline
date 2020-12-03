@@ -48,6 +48,7 @@ def buildCeph() {
             SKIP_TESTS=1 SKIP_BINDIR_CLEAN=1 CMAKE_BUILD_TYPE=Release ./win32_build.sh
         '''
         stash includes: 'bin_stripped/**', name: 'ceph-binaries'
+        archiveArtifacts 'bin_stripped/**'
     }
 }
 
@@ -100,6 +101,7 @@ def buildWnbd() {
         stash includes: 'Driver/**', name: 'wnbd-driver'
         stash includes: 'Binaries/**', name: 'wnbd-binaries'
         stash includes: 'Symbols/**', name: 'wnbd-symbols'
+        archiveArtifacts 'wnbd/vstudio/x64/Release/**/**'
     }
 }
 
@@ -111,21 +113,29 @@ def buildCephInstaller() {
         unstash 'wnbd-driver'
         unstash 'wnbd-binaries'
         unstash 'wnbd-symbols'
+        unstash 'ceph-binaries'
 
         bat '''
             dir Binaries
             dir Driver
             dir Symbols
+            dir bin_stripped
         '''
 
         bat '''
             git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || exit 1
             cd installer || exit 1
+
             move "..\\Binaries" .
             move "..\\Driver" .
             move "..\\Symbols" .
+            move "..\\bin_stripped\\ceph-conf.exe" "Binaries\\"
+            move "..\\bin_stripped\\rados.exe" "Binaries\\"
+            move "..\\bin_stripped\\rbd.exe" "Binaries\\"
+            move "..\\bin_stripped\\rbd-wnbd.exe" "Binaries\\"
+            move "..\\bin_stripped\\ceph-dokan.exe" "Binaries\\"
+
             call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
-            echo "" > "Binaries\\rbd-wnbd.exe"
             msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release || exit 1
         '''
         stash includes: 'installer/bin/Release/Ceph.msi', name: 'Ceph.msi'
@@ -134,4 +144,5 @@ def buildCephInstaller() {
 }
 
 buildWnbd()
+buildCeph()
 buildCephInstaller()
