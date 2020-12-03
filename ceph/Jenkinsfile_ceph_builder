@@ -1,0 +1,33 @@
+#!/usr/bin/env groovy
+
+env.BUILD_DIR = "/tmp/ceph-build"
+
+properties ([
+    overrideIndexTriggers(false),
+    [$class: 'ParametersDefinitionProperty',
+        parameterDefinitions: [
+        [$class: 'StringParameterDefinition',
+            name: 'CEPH_GIT_REMOTE',
+            defaultValue: 'https://github.com/petrutlucian94/ceph',
+            description: 'Ceph git remote.'],
+        [$class: 'StringParameterDefinition',
+            name: 'CEPH_GIT_BRANCH',
+            defaultValue: 'wnbd_dev',
+            description: 'Ceph branch to be built.'],
+        ]
+    ]
+])
+
+node ("ceph_builder") {
+
+    println "Building ceph"
+    sh '''#/bin/bash
+        set -xe
+        mkdir -p $BUILD_DIR || true
+        cd $BUILD_DIR
+        rm -rf ceph || true
+        git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph
+        cd ceph
+        BUILD_ZIP=1 STRIP_ZIPPED=1 SKIP_TESTS=1 SKIP_BINDIR_CLEAN=1 CMAKE_BUILD_TYPE=Release ./win32_build.sh
+    '''
+}
