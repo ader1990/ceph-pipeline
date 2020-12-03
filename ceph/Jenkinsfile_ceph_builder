@@ -1,6 +1,5 @@
 #!/usr/bin/env groovy
 
-env.BUILD_DIR = "/tmp/ceph-build"
 env.CURL_PATH = "C:/Program Files/git/mingw64/bin/curl.exe"
 env.WINDOWS_BUILD_TOOLS = "C:\\BuildTools"
 
