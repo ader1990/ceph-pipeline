@@ -1,6 +1,8 @@
 #!/usr/bin/env groovy
 
 env.BUILD_DIR = "/tmp/ceph-build"
+env.CURL_PATH = "C:/Program Files/git/mingw64/bin/curl.exe"
+env.WINDOWS_BUILD_TOOLS = "C:\\BuildTools"
 
 properties ([
     overrideIndexTriggers(false),
@@ -16,11 +18,11 @@ properties ([
             description: 'Ceph branch to be built.'],
         [$class: 'StringParameterDefinition',
             name: 'WNBD_GIT_REMOTE',
-            defaultValue: 'https://github.com/ader1990/wnbd',
+            defaultValue: 'https://github.com/cloudbase/wnbd',
             description: 'WNBD git remote.'],
         [$class: 'StringParameterDefinition',
             name: 'WNBD_GIT_BRANCH',
-            defaultValue: 'enforce_tls_1.2',
+            defaultValue: 'master',
             description: 'WNBD branch to be built.'],
         [$class: 'StringParameterDefinition',
             name: 'CEPH_INSTALLER_GIT_REMOTE',
@@ -53,15 +55,16 @@ def installWnbdDeps() {
         println "Installing wnbd dependencies"
         cleanWs()
         bat '''
-            if exist C:\\BuildTools\\MSBuild\\nul (echo "Build tools area already installed." && exit 0)
+            if exist "%WINDOWS_BUILD_TOOLS%\\MSBuild" (echo "Build tools area already installed." && exit 0)
             mkdir temp
-            "C:/Program Files/git/mingw64/bin/curl.exe" -L -s "https://aka.ms/vs/16/release/vs_buildtools.exe" -o "vs_buildtools.exe" || exit 1
-            "C:/Program Files/git/mingw64/bin/curl.exe" -L -s "https://go.microsoft.com/fwlink/?linkid=2085767" -o "wdksetup.exe" || exit 1
-            vs_buildtools.exe --wait --quiet --norestart --nocache --installPath C:\\BuildTools --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Workload.MSBuildTools --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK.18362 --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64 --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64.Spectre || exit 1
+            "%CURL_PATH%" -L -s "https://aka.ms/vs/16/release/vs_buildtools.exe" -o "vs_buildtools.exe" || exit 1
+            "%CURL_PATH%" -L -s "https://go.microsoft.com/fwlink/?linkid=2085767" -o "wdksetup.exe" || exit 1
+            vs_buildtools.exe --wait --quiet --norestart --nocache --installPath "%WINDOWS_BUILD_TOOLS%" --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Workload.MSBuildTools --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK.18362 --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64 --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64.Spectre || exit 1
             wdksetup.exe /q || exit 1
-            copy "C:\\Program Files (x86)\\Windows Kits\\10\\Vsix\\VS2019\\WDK.vsix" "temp\\wdkvsix.zip" || exit 1
+            copy "%programfiles(x86)%\\Windows Kits\\10\\Vsix\\VS2019\\WDK.vsix" "temp\\wdkvsix.zip" || exit 1
             powershell Expand-Archive "temp\\wdkvsix.zip" -Force -DestinationPath "temp\\wdkvsix" || exit 1
-            robocopy.exe /e "temp\\wdkvsix\\$MSBuild\\Microsoft\\VC\\v160" "C:\\BuildTools\\MSBuild\\Microsoft\\VC\\v160" || exit 1
+            robocopy.exe /e "temp\\wdkvsix\\$MSBuild\\Microsoft\\VC\\v160" "%WINDOWS_BUILD_TOOLS%\\MSBuild\\Microsoft\\VC\\v160" || exit 1
+            exit 0
         '''
     }
 }
@@ -71,10 +74,10 @@ def buildWnbd() {
         println "Building ceph winbd"
         cleanWs()
         bat '''
-            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd
-            cd wnbd
-            call "c:/BuildTools/VC/Auxiliary/Build/vcvarsall.bat" x86_x64 10.0.18362.0 & set
-            msbuild.exe vstudio/wnbd.sln /p:Configuration=Release
+            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd || exit 1
+            cd wnbd || exit 1
+            call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
+            msbuild.exe vstudio/wnbd.sln /p:Configuration=Release || exit 1
         '''
     }
 }
@@ -84,10 +87,10 @@ def buildCephInstaller() {
         println "Building ceph installer"
         cleanWs()
         bat '''
-            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer
-            cd installer
-            call "c:/BuildTools/VC/Auxiliary/Build/vcvarsall.bat" x86_x64 10.0.18362.0 & set
-            msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release
+            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || exit 1
+            cd installer || exit 1
+            call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
+            msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release || exit 1
         '''
     }
 }
