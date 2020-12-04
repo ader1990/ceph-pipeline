@@ -3,6 +3,8 @@
 env.CURL_PATH = "C:/Program Files/git/mingw64/bin/curl.exe"
 env.WINDOWS_BUILD_TOOLS = "C:\\BuildTools"
 
+def build_ceph_wnbd = [:]
+
 properties ([
     overrideIndexTriggers(false),
     [$class: 'ParametersDefinitionProperty',
@@ -38,136 +40,160 @@ properties ([
 
 def buildCeph() {
     node("ceph_builder") {
-        println "Building ceph"
-        cleanWs()
-        sh '''#/bin/bash
-            set -xe
-            git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph
-            git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph || true
-            git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph || true
-            cd ceph
-            SKIP_TESTS=1 SKIP_BINDIR_CLEAN=1 CMAKE_BUILD_TYPE=Release ./win32_build.sh
-        '''
-        stash includes: 'ceph/build/bin/**', name: 'ceph-binaries'
-        archiveArtifacts 'ceph/build/bin/**'
+        stage("build_ceph") {
+            println "Building ceph"
+            cleanWs()
+            sh '''#/bin/bash
+                set -xe
+                git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph
+                git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph || true
+                git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph || true
+                cd ceph
+                SKIP_TESTS=1 SKIP_BINDIR_CLEAN=1 CMAKE_BUILD_TYPE=Release ./win32_build.sh
+            '''
+            stash includes: 'ceph/build/bin/**', name: 'ceph-binaries'
+            archiveArtifacts 'ceph/build/bin/**'
+        }
     }
 }
 
 def getCephBinaries() {
     node("ceph_builder") {
-        println "Getting ceph binaries"
-        stash includes: 'ceph/build/bin/**', name: 'ceph-binaries'
-        archiveArtifacts 'ceph/build/bin/**'
+        stage("get_ceph_binaries") {
+            println "Getting ceph binaries"
+            sh '''#!/bin/bash
+               mkdir ceph
+               cp -r /tmp/build ceph/
+            '''
+            stash includes: 'ceph/build/bin/**', name: 'ceph-binaries'
+            archiveArtifacts 'ceph/build/bin/**'
+        }
     }
 }
 
 def installWnbdDeps() {
     node("windows_ceph_builder") {
-        println "Installing wnbd dependencies"
-        cleanWs()
-        bat '''
-            if exist "%WINDOWS_BUILD_TOOLS%\\MSBuild" (echo "Build tools area already installed." && exit 0)
-            mkdir temp
-            "%CURL_PATH%" -L -s "https://aka.ms/vs/16/release/vs_buildtools.exe" -o "vs_buildtools.exe" || exit 1
-            "%CURL_PATH%" -L -s "https://go.microsoft.com/fwlink/?linkid=2085767" -o "wdksetup.exe" || exit 1
-            vs_buildtools.exe --wait --quiet --norestart --nocache --installPath "%WINDOWS_BUILD_TOOLS%" ^
-                --add Microsoft.VisualStudio.Workload.VCTools ^
-                --add Microsoft.VisualStudio.Workload.MSBuildTools ^
-                --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre ^
-                --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 ^
-                --add Microsoft.VisualStudio.Component.Windows10SDK.18362 ^
-                --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64 ^
-                --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64.Spectre || exit 1
-            wdksetup.exe /q || exit 1
-            copy "%programfiles(x86)%\\Windows Kits\\10\\Vsix\\VS2019\\WDK.vsix" "temp\\wdkvsix.zip" || exit 1
-            powershell Expand-Archive "temp\\wdkvsix.zip" -Force -DestinationPath "temp\\wdkvsix" || exit 1
-            robocopy.exe /e "temp\\wdkvsix\\$MSBuild\\Microsoft\\VC\\v160" "%WINDOWS_BUILD_TOOLS%\\MSBuild\\Microsoft\\VC\\v160"
-        '''
+        stage("install_wnbd_deps") {
+            println "Installing wnbd dependencies"
+            cleanWs()
+            bat '''
+                if exist "%WINDOWS_BUILD_TOOLS%\\MSBuild" (echo "Build tools area already installed." && exit 0)
+                mkdir temp
+                "%CURL_PATH%" -L -s "https://aka.ms/vs/16/release/vs_buildtools.exe" -o "vs_buildtools.exe" || exit 1
+                "%CURL_PATH%" -L -s "https://go.microsoft.com/fwlink/?linkid=2085767" -o "wdksetup.exe" || exit 1
+                vs_buildtools.exe --wait --quiet --norestart --nocache --installPath "%WINDOWS_BUILD_TOOLS%" ^
+                    --add Microsoft.VisualStudio.Workload.VCTools ^
+                    --add Microsoft.VisualStudio.Workload.MSBuildTools ^
+                    --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre ^
+                    --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 ^
+                    --add Microsoft.VisualStudio.Component.Windows10SDK.18362 ^
+                    --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64 ^
+                    --add Microsoft.VisualStudio.Component.VC.14.24.x86.x64.Spectre || exit 1
+                wdksetup.exe /q || exit 1
+                copy "%programfiles(x86)%\\Windows Kits\\10\\Vsix\\VS2019\\WDK.vsix" "temp\\wdkvsix.zip" || exit 1
+                powershell Expand-Archive "temp\\wdkvsix.zip" -Force -DestinationPath "temp\\wdkvsix" || exit 1
+                robocopy.exe /e "temp\\wdkvsix\\$MSBuild\\Microsoft\\VC\\v160" "%WINDOWS_BUILD_TOOLS%\\MSBuild\\Microsoft\\VC\\v160"
+            '''
+        }
     }
 }
 
 
 def getWnbdBinaries() {
     node("ceph_builder") {
-        println "Getting wnbd binaries"
-        stash includes: 'Driver/**', name: 'wnbd-driver'
-        stash includes: 'Binaries/**', name: 'wnbd-binaries'
-        stash includes: 'Symbols/**', name: 'wnbd-symbols'
-        archiveArtifacts 'wnbd/vstudio/x64/Release/**/**'
+        stage("get_wnbd_binaries") {
+            println "Getting wnbd binaries"
+            stash includes: 'Driver/**', name: 'wnbd-driver'
+            stash includes: 'Binaries/**', name: 'wnbd-binaries'
+            stash includes: 'Symbols/**', name: 'wnbd-symbols'
+            archiveArtifacts 'wnbd/vstudio/x64/Release/**/**'
+        }
     }
 }
 
 def buildWnbd() {
     node("windows_ceph_builder") {
-        println "Building ceph winbd"
-        cleanWs()
-        bat '''
-            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd
-            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd || true
-            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd || true
-            mkdir "Driver"
-            mkdir "Binaries"
-            mkdir "Symbols"
-            cd wnbd || exit 1
-            call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
-            msbuild.exe vstudio/wnbd.sln /p:Configuration=Release || exit 1
-            copy vstudio\\x64\\Release\\driver\\* ..\\Driver\\
-            copy vstudio\\x64\\Release\\libwnbd.dll ..\\Binaries\\
-            copy vstudio\\x64\\Release\\wnbd-client.exe ..\\Binaries\\
-            copy vstudio\\wnbdevents.xml ..\\Binaries\\
-            copy vstudio\\x64\\Release\\pdb\\driver\\* ..\\Symbols\\
-            copy vstudio\\x64\\Release\\pdb\\libwnbd\\* ..\\Symbols\\
-            copy vstudio\\x64\\Release\\pdb\\wnbd-client\\* ..\\Symbols\\
-           
-        '''
-        stash includes: 'Driver/**', name: 'wnbd-driver'
-        stash includes: 'Binaries/**', name: 'wnbd-binaries'
-        stash includes: 'Symbols/**', name: 'wnbd-symbols'
-        archiveArtifacts 'wnbd/vstudio/x64/Release/**/**'
+        stage("build_wnbd") {
+            println "Building ceph winbd"
+            cleanWs()
+            bat '''
+                git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd
+                git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd || true
+                git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd || true
+                mkdir "Driver"
+                mkdir "Binaries"
+                mkdir "Symbols"
+                cd wnbd || exit 1
+                call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
+                msbuild.exe vstudio/wnbd.sln /p:Configuration=Release || exit 1
+                copy vstudio\\x64\\Release\\driver\\* ..\\Driver\\
+                copy vstudio\\x64\\Release\\libwnbd.dll ..\\Binaries\\
+                copy vstudio\\x64\\Release\\wnbd-client.exe ..\\Binaries\\
+                copy vstudio\\wnbdevents.xml ..\\Binaries\\
+                copy vstudio\\x64\\Release\\pdb\\driver\\* ..\\Symbols\\
+                copy vstudio\\x64\\Release\\pdb\\libwnbd\\* ..\\Symbols\\
+                copy vstudio\\x64\\Release\\pdb\\wnbd-client\\* ..\\Symbols\\
+               
+            '''
+            stash includes: 'Driver/**', name: 'wnbd-driver'
+            stash includes: 'Binaries/**', name: 'wnbd-binaries'
+            stash includes: 'Symbols/**', name: 'wnbd-symbols'
+            archiveArtifacts 'wnbd/vstudio/x64/Release/**/**'
+        }
     }
 }
 
 def buildCephInstaller() {
     node("windows_ceph_builder") {
-        println "Building ceph installer"
-        cleanWs()
+        stage("build_ceph_installer") {
+            println "Building ceph installer"
+            cleanWs()
 
-        unstash 'wnbd-driver'
-        unstash 'wnbd-binaries'
-        unstash 'wnbd-symbols'
-        unstash 'ceph-binaries'
+            unstash 'wnbd-driver'
+            unstash 'wnbd-binaries'
+            unstash 'wnbd-symbols'
+            unstash 'ceph-binaries'
 
-        bat '''
-            dir Binaries
-            dir Driver
-            dir Symbols
-            dir "ceph\\build\\bin"
-        '''
+            bat '''
+                dir Binaries
+                dir Driver
+                dir Symbols
+                dir "ceph\\build\\bin"
+            '''
 
-        bat '''
-            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer
-            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || true
-            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || true
-            cd installer || exit 1
+            bat '''
+                git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer
+                git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || true
+                git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || true
+                cd installer || exit 1
 
-            move "..\\Binaries" .
-            move "..\\Driver" .
-            move "..\\Symbols" .
-            move "..\\ceph\\build\\bin\\ceph-conf.exe" "Binaries\\"
-            move "..\\ceph\\build\\bin\\rados.exe" "Binaries\\"
-            move "..\\ceph\\build\\bin\\rbd.exe" "Binaries\\"
-            move "..\\ceph\\build\\bin\\rbd-wnbd.exe" "Binaries\\"
-            move "..\\ceph\\build\\bin\\ceph-dokan.exe" "Binaries\\"
-            move "..\\ceph\\build\\bin\\*.dll" "Binaries\\"
+                move "..\\Binaries" .
+                move "..\\Driver" .
+                move "..\\Symbols" .
+                move "..\\ceph\\build\\bin\\ceph-conf.exe" "Binaries\\"
+                move "..\\ceph\\build\\bin\\rados.exe" "Binaries\\"
+                move "..\\ceph\\build\\bin\\rbd.exe" "Binaries\\"
+                move "..\\ceph\\build\\bin\\rbd-wnbd.exe" "Binaries\\"
+                move "..\\ceph\\build\\bin\\ceph-dokan.exe" "Binaries\\"
+                move "..\\ceph\\build\\bin\\*.dll" "Binaries\\"
 
-            call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
-            msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release || exit 1
-        '''
-        stash includes: 'installer/bin/Release/Ceph.msi', name: 'Ceph.msi'
-        archiveArtifacts 'installer/bin/Release/Ceph.msi'
+                call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
+                msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release || exit 1
+            '''
+            stash includes: 'installer/bin/Release/Ceph.msi', name: 'Ceph.msi'
+            archiveArtifacts 'installer/bin/Release/Ceph.msi'
+        }
     }
 }
 
-buildCeph()
-buildWnbd()
+build_ceph_wnbd['build_ceph'] = {
+    // getCephBinaries()
+    buildCeph()
+}
+build_ceph_wnbd['build_wnbd'] = {
+    // getWnbdBinaries()
+    buildWnbd()
+}
+
+parallel build_ceph_wnbd
 buildCephInstaller()
