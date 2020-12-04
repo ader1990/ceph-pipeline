@@ -86,6 +86,17 @@ def installWnbdDeps() {
     }
 }
 
+
+def getWnbdBinaries() {
+    node("ceph_builder") {
+        println "Getting wnbd binaries"
+        stash includes: 'Driver/**', name: 'wnbd-driver'
+        stash includes: 'Binaries/**', name: 'wnbd-binaries'
+        stash includes: 'Symbols/**', name: 'wnbd-symbols'
+        archiveArtifacts 'wnbd/vstudio/x64/Release/**/**'
+    }
+}
+
 def buildWnbd() {
     node("windows_ceph_builder") {
         println "Building ceph winbd"
@@ -157,6 +168,6 @@ def buildCephInstaller() {
     }
 }
 
-getCephBinaries()
+buildCeph()
 buildWnbd()
 buildCephInstaller()
