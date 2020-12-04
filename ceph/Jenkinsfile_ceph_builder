@@ -170,7 +170,10 @@ def buildCephInstaller() {
                 dir Symbols
                 dir "ceph\\build\\bin"
             '''
-
+            withCredentials([string(credentialsId: 'AUTHENTICODE_CERT_THUMBPRINT', variable: 'AUTHENTICODE_CERT_THUMBPRINT'),
+                             string(credentialsId: 'CROSS_CERT_PATH', variable: 'CROSS_CERT_PATH'),
+                             string(credentialsId: 'CERT_TIMESTAMP_URL', variable: 'CERT_TIMESTAMP_URL')
+            ]) {
             bat '''
                 git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer
                 git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || true
@@ -188,8 +191,15 @@ def buildCephInstaller() {
                 move "..\\ceph\\build\\bin\\*.dll" "Binaries\\"
 
                 call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
+
+                signtool sign /f "C:\\Users\\Administrator\\cert.pfx" /p "x" /v "Driver\\wnbd.sys" || exit 1
+                signtool sign /f "C:\\Users\\Administrator\\cert.pfx" /p "x" /v "Driver\\wnbd.cat" || exit 1
+
                 msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release || exit 1
+
+                signtool sign /f "C:\\Users\\Administrator\\cert.pfx" /p "x" /v "bin\\Release\\Ceph.msi" || exit 1
             '''
+            }
             stash includes: 'installer/bin/Release/Ceph.msi', name: 'Ceph.msi'
             archiveArtifacts 'installer/bin/Release/Ceph.msi'
         }
