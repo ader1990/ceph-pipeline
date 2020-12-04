@@ -43,11 +43,21 @@ def buildCeph() {
         sh '''#/bin/bash
             set -xe
             git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph
+            git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph || true
+            git -c core.symlinks=true clone --recurse-submodules $CEPH_GIT_REMOTE -b $CEPH_GIT_BRANCH ceph || true
             cd ceph
             SKIP_TESTS=1 SKIP_BINDIR_CLEAN=1 CMAKE_BUILD_TYPE=Release ./win32_build.sh
         '''
-        stash includes: 'bin_stripped/**', name: 'ceph-binaries'
-        archiveArtifacts 'bin_stripped/**'
+        stash includes: 'ceph/build/bin/**', name: 'ceph-binaries'
+        archiveArtifacts 'ceph/build/bin/**'
+    }
+}
+
+def getCephBinaries() {
+    node("ceph_builder") {
+        println "Getting ceph binaries"
+        stash includes: 'ceph/build/bin/**', name: 'ceph-binaries'
+        archiveArtifacts 'ceph/build/bin/**'
     }
 }
 
@@ -81,7 +91,9 @@ def buildWnbd() {
         println "Building ceph winbd"
         cleanWs()
         bat '''
-            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd || exit 1
+            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd
+            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd || true
+            git clone "%WNBD_GIT_REMOTE%" --branch "%WNBD_GIT_BRANCH%" wnbd || true
             mkdir "Driver"
             mkdir "Binaries"
             mkdir "Symbols"
@@ -118,21 +130,24 @@ def buildCephInstaller() {
             dir Binaries
             dir Driver
             dir Symbols
-            dir bin_stripped
+            dir "ceph\\build\\bin"
         '''
 
         bat '''
-            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || exit 1
+            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer
+            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || true
+            git clone "%CEPH_INSTALLER_GIT_REMOTE%" --branch "%CEPH_INSTALLER_GIT_BRANCH%" installer || true
             cd installer || exit 1
 
             move "..\\Binaries" .
             move "..\\Driver" .
             move "..\\Symbols" .
-            move "..\\bin_stripped\\ceph-conf.exe" "Binaries\\"
-            move "..\\bin_stripped\\rados.exe" "Binaries\\"
-            move "..\\bin_stripped\\rbd.exe" "Binaries\\"
-            move "..\\bin_stripped\\rbd-wnbd.exe" "Binaries\\"
-            move "..\\bin_stripped\\ceph-dokan.exe" "Binaries\\"
+            move "..\\ceph\\build\\bin\\ceph-conf.exe" "Binaries\\"
+            move "..\\ceph\\build\\bin\\rados.exe" "Binaries\\"
+            move "..\\ceph\\build\\bin\\rbd.exe" "Binaries\\"
+            move "..\\ceph\\build\\bin\\rbd-wnbd.exe" "Binaries\\"
+            move "..\\ceph\\build\\bin\\ceph-dokan.exe" "Binaries\\"
+            move "..\\ceph\\build\\bin\\*.dll" "Binaries\\"
 
             call "%WINDOWS_BUILD_TOOLS%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_x64 10.0.18362.0 & set
             msbuild.exe ceph-windows-installer.sln /p:Platform=x64 /p:Configuration=Release || exit 1
@@ -142,6 +157,6 @@ def buildCephInstaller() {
     }
 }
 
+getCephBinaries()
 buildWnbd()
-buildCeph()
 buildCephInstaller()
