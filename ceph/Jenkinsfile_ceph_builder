@@ -61,12 +61,12 @@ def getCephBinaries() {
     node("ceph_builder") {
         stage("get_ceph_binaries") {
             println "Getting ceph binaries"
+            cleanWs()
             sh '''#!/bin/bash
                mkdir ceph
                cp -r /tmp/build ceph/
             '''
             stash includes: 'ceph/build/bin/**', name: 'ceph-binaries'
-            archiveArtifacts 'ceph/build/bin/**'
         }
     }
 }
@@ -93,6 +93,7 @@ def installWnbdDeps() {
                 copy "%programfiles(x86)%\\Windows Kits\\10\\Vsix\\VS2019\\WDK.vsix" "temp\\wdkvsix.zip" || exit 1
                 powershell Expand-Archive "temp\\wdkvsix.zip" -Force -DestinationPath "temp\\wdkvsix" || exit 1
                 robocopy.exe /e "temp\\wdkvsix\\$MSBuild\\Microsoft\\VC\\v160" "%WINDOWS_BUILD_TOOLS%\\MSBuild\\Microsoft\\VC\\v160"
+                exit 0
             '''
         }
     }
@@ -100,13 +101,22 @@ def installWnbdDeps() {
 
 
 def getWnbdBinaries() {
-    node("ceph_builder") {
+    node("windows_ceph_builder") {
         stage("get_wnbd_binaries") {
             println "Getting wnbd binaries"
+            cleanWs()
+            bat '''
+                mkdir Driver
+                mkdir Binaries
+                mkdir Symbols
+                robocopy.exe /e "C:\\temp\\Driver" "Driver"
+                robocopy.exe /e "C:\\temp\\Binaries" "Binaries"
+                robocopy.exe /e "C:\\temp\\Symbols" "Symbols"
+                exit 0
+            '''
             stash includes: 'Driver/**', name: 'wnbd-driver'
             stash includes: 'Binaries/**', name: 'wnbd-binaries'
             stash includes: 'Symbols/**', name: 'wnbd-symbols'
-            archiveArtifacts 'wnbd/vstudio/x64/Release/**/**'
         }
     }
 }
